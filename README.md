@@ -1,2 +1,3 @@
 # Political-Misinformation-Social-Networks
-Analyzing the spread of misinformation among Macedonian political lines and the affects on it on engagement!
+Analyzing the spread of misinformation along Macedonian political lines and the effects of it on engagement!
+
