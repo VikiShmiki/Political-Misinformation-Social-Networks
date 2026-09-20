@@ -1,0 +1,47 @@
+\documentclass[11pt,a4paper]{article}
+\usepackage[margin=1in]{geometry}
+\usepackage{booktabs}
+\usepackage{hyperref}
+\usepackage{parskip}
+\title{Multi-Task Graph Neural Networks for Political Tweets}
+\author{Political Misinformation Social Network Project}
+\date{}
+\begin{document}
+\maketitle
+
+\section{Overview}
+This project represents a collection of political tweets as a social graph and evaluates several graph neural network (GNN) architectures. The model has two prediction heads: one predicts the political account that authored a tweet, and the other predicts whether the tweet received a generated misinformation label.
+
+\section{Dataset and graph construction}
+The working archive contains 7,053 tweets from 14 political accounts. The graph contains 10,160 nodes and 97,364 edges after adding the social-network entities found in the tweet metadata. Tweet features are numerical metadata and text-derived features prepared by the original preprocessing notebooks. Only tweet nodes are used as labeled examples; the remaining graph nodes provide neighborhood context during message passing.
+
+\section{Labels}
+Misinformation labels were generated with the multilingual zero-shot model \texttt{joeddav/xlm-roberta-large-xnli} using the candidate labels \texttt{valid}, \texttt{misleading}, and \texttt{invalid}. For the binary experiment, \texttt{valid} is treated as the negative class and the other two labels as the positive class. These are pseudo-labels rather than expert fact-checks, so the results should not be interpreted as a definitive misinformation detector.
+
+\section{Models}
+Each model uses two graph convolution layers, layer normalization, ReLU activations, dropout, and a shared hidden representation. The representation feeds two linear heads: a 14-class author classifier and a binary misinformation classifier. The comparison includes Graph Convolutional Networks (GCN), GraphSAGE, and Graph Attention Networks (GAT), using the same stratified split and optimization settings.
+
+\section{Results}
+\begin{table}[h]
+\centering
+\begin{tabular}{lrrrr}
+\toprule
+Model & Author accuracy & Author macro-F1 & Misinfo accuracy & Misinfo macro-F1\\
+\midrule
+GCN & 0.962 & 0.957 & 0.755 & 0.689\\
+GraphSAGE & 0.991 & 0.989 & 0.775 & 0.708\\
+GAT & 0.997 & 0.997 & 0.703 & 0.641\\
+\bottomrule
+\end{tabular}
+\caption{Test-set performance on both tasks.}
+\end{table}
+
+GraphSAGE gives the best balance between the two objectives. GAT achieves the highest author-identification score, but its misinformation macro-F1 is lower. This suggests that identifying an account is easier than recovering the noisier generated misinformation labels.
+
+\section{Conclusion}
+The experiment demonstrates a practical multi-task GNN workflow on a medium-sized political social graph. Sharing the graph encoder lets the author and misinformation tasks use the same neighborhood representation while keeping their outputs separate. A stronger follow-up would replace zero-shot labels with independently verified fact-check annotations and evaluate across time-based splits to reduce leakage from recurring accounts and topics.
+
+\section*{Code}
+The source code and Colab workflow are available at:\\
+\url{https://github.com/VikiShmiki/Political-Misinformation-Social-Networks}
+\end{document}

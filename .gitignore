@@ -192,3 +192,9 @@ cython_debug/
 #  refer to https://docs.cursor.com/context/ignore-files
 .cursorignore
 .cursorindexingignore
+
+# Project data and local build artifacts
+*.zip
+*.csv
+work/
+__pycache__/
