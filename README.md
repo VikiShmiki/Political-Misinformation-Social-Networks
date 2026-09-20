@@ -19,6 +19,8 @@ All models use the same fixed stratified train/validation/test split.
 
 GraphSAGE is the strongest balanced model. GAT is excellent at identifying the account but less reliable for the misinformation task.
 
+Additional experiments were also run. In single-task controls, the author/misinformation macro-F1 pairs were 0.952/0.683 for GCN, 0.998/0.693 for GraphSAGE, and 0.994/0.700 for GAT. GraphSAGE training-size sensitivity produced misinformation macro-F1 values of 0.689, 0.712, and 0.708 with 50%, 75%, and 100% of the training tweets, respectively. These checks are discussed in the paper.
+
 ## Important label note
 
 The misinformation labels are pseudo-labels produced with the multilingual zero-shot model `joeddav/xlm-roberta-large-xnli`, using the candidate labels `valid`, `misleading`, and `invalid`. They are not manually verified fact-checks. Therefore, the second task should be described as prediction of automatically generated misinformation labels, not definitive truth detection.
@@ -40,7 +42,7 @@ The generated labeled CSV and raw archive are intentionally excluded from Git be
 ```text
 src/multitask_gnn.py              model and experiment code
 misinformation notebooks/        original data and graph notebooks
-report.tex                       written report source
-report.pdf                       rendered report
+report.tex                       two-column paper source
+report.pdf                       rendered two-column paper
 requirements.txt                 Python dependencies
 ```
