@@ -46,3 +46,5 @@ report.tex                       two-column paper source
 report.pdf                       rendered two-column paper
 requirements.txt                 Python dependencies
 ```
+
+The PDF is compiled directly from `report.tex` with `tectonic report.tex` (or another LaTeX engine with the IEEEtran class installed).

@@ -1,25 +1,19 @@
-\documentclass[10pt,twocolumn]{article}
-\usepackage[margin=0.72in,columnsep=0.25in]{geometry}
-\usepackage{times}
+\documentclass[conference]{IEEEtran}
 \usepackage{booktabs}
 \usepackage{hyperref}
 \usepackage{microtype}
-\usepackage{balance}
-\usepackage{caption}
-\hypersetup{colorlinks=true,linkcolor=blue,urlcolor=blue,citecolor=blue}
+\hypersetup{hidelinks}
 \title{Multi-Task Graph Neural Networks for Political Account Identification and Misinformation Label Prediction}
-\author{Political Misinformation Social Network Project}
-\date{}
+\author{\IEEEauthorblockN{Political Misinformation Social Network Project}}
 
 \begin{document}
-\twocolumn[
 \maketitle
 \begin{abstract}
 This paper investigates multi-task graph neural networks for political communication analysis. A collection of 7,053 tweets from 14 Macedonian political accounts is represented as a graph containing 10,160 nodes and 97,364 edges. A shared graph encoder is trained with two task-specific heads: a 14-class author-identification head and a binary classifier for automatically generated misinformation labels. GCN, GraphSAGE, and GAT are evaluated under a common stratified split. GraphSAGE provides the strongest balance, obtaining an author macro-F1 of 0.989 and a misinformation macro-F1 of 0.708. Single-task controls and training-size sensitivity experiments further show that the joint objective improves misinformation-label prediction for GCN and GraphSAGE, although the effect is architecture-dependent.
 \end{abstract}
-\textbf{Keywords:} graph neural networks; social networks; political communication; misinformation; multi-task learning
-\vspace{0.2in}
-]
+\begin{IEEEkeywords}
+graph neural networks, social networks, political communication, misinformation, multi-task learning
+\end{IEEEkeywords}
 
 \section{Introduction}
 Political discussion on social media is shaped by both message content and the network structure through which messages are produced and circulated. Treating tweets as independent observations discards information about authorship, interaction, and shared social context. Graph neural networks (GNNs) provide a framework for combining these sources by propagating feature representations over a graph.
@@ -42,59 +36,32 @@ The tweet nodes are divided into training, validation, and test partitions using
 \section{Main Results}
 Table~\ref{tab:main} reports the multi-task results. All architectures identify authors substantially better than they predict generated misinformation labels. GAT obtains the highest author score, whereas GraphSAGE obtains the highest misinformation score and the strongest combined performance.
 
-\begin{table*}[t]
+\begin{table}[t]
 \centering
 \caption{Multi-task test-set performance.}
 \label{tab:main}
-\begin{tabular}{lrrrr}
+\setlength{\tabcolsep}{4pt}
+\begin{tabular}{lcccc}
 \toprule
-Model & Author accuracy & Author macro-F1 & Misinformation accuracy & Misinformation macro-F1\\
+& \multicolumn{2}{c}{Author} & \multicolumn{2}{c}{Misinformation}\\
+\cmidrule(lr){2-3}\cmidrule(l){4-5}
+Model & Acc. & Macro-F1 & Acc. & Macro-F1\\
 \midrule
 GCN & 0.962 & 0.957 & 0.755 & 0.689\\
 GraphSAGE & 0.991 & 0.989 & 0.775 & 0.708\\
 GAT & 0.997 & 0.997 & 0.703 & 0.641\\
 \bottomrule
 \end{tabular}
-\end{table*}
+\end{table}
 
 \section{Additional Experiments}
 \subsection{Single-Task Controls}
-To separate architectural effects from the effect of joint training, each backbone was also trained with only one prediction head. The same graph, split, optimizer, and early-stopping rule were used. Table~\ref{tab:single} shows the test macro-F1 values.
-
-\begin{table}[t]
-\centering
-\caption{Single-task control macro-F1.}
-\label{tab:single}
-\begin{tabular}{lrr}
-\toprule
-Model & Author & Misinformation\\
-\midrule
-GCN & 0.952 & 0.683\\
-GraphSAGE & 0.998 & 0.693\\
-GAT & 0.994 & 0.700\\
-\bottomrule
-\end{tabular}
-\end{table}
+To separate architectural effects from the effect of joint training, each backbone was also trained with only one prediction head. The same graph, split, optimizer, and early-stopping rule were used. Single-task author macro-F1 was 0.952 for GCN, 0.998 for GraphSAGE, and 0.994 for GAT; the corresponding misinformation macro-F1 values were 0.683, 0.693, and 0.700.
 
 Relative to its single-task control, multi-task training raises misinformation macro-F1 for GCN from 0.683 to 0.689 and for GraphSAGE from 0.693 to 0.708. The effect is not universal: GAT decreases from 0.700 to 0.641 while its author macro-F1 increases from 0.994 to 0.997. This result suggests that the auxiliary author objective can act as a useful inductive bias for some encoders but can also compete with the misinformation objective.
 
 \subsection{Training-Size Sensitivity}
-GraphSAGE was evaluated with 50\%, 75\%, and 100\% of the available training tweets. The validation and test sets were held fixed. The 100\% condition corresponds to the main experiment. Author macro-F1 remained approximately constant, while misinformation macro-F1 varied modestly: 0.689, 0.712, and 0.708 for the three training fractions, respectively. This indicates that the misinformation result is less stable than the author result and should be interpreted with appropriate caution.
-
-\begin{table}[t]
-\centering
-\caption{GraphSAGE sensitivity to training-set size.}
-\label{tab:sensitivity}
-\begin{tabular}{lrr}
-\toprule
-Training fraction & Author macro-F1 & Misinformation macro-F1\\
-\midrule
-50\% & 0.990 & 0.689\\
-75\% & 0.990 & 0.712\\
-100\% & 0.989 & 0.708\\
-\bottomrule
-\end{tabular}
-\end{table}
+GraphSAGE was evaluated with 50\%, 75\%, and 100\% of the available training tweets. The validation and test sets were held fixed. The 100\% condition corresponds to the main experiment. Author macro-F1 remained approximately constant at 0.990, 0.990, and 0.989, while misinformation macro-F1 was 0.689, 0.712, and 0.708, respectively. This variation suggests that the misinformation result is less stable than the author result.
 
 \section{Discussion}
 The experiments support the use of multi-task graph learning as a compact way to model political social-network data. The shared representation is sufficiently expressive to distinguish the 14 accounts while also supporting a second, weaker classification objective. Architectural choices affect the two tasks differently: attention improves author identification in this setting, whereas neighborhood aggregation provides better performance on the misinformation-label task.
@@ -111,7 +78,6 @@ This paper presented a multi-task GNN framework for political tweet analysis and
 The preprocessing notebooks, model implementation, dependency list, and Google Colab workflow are available at:\\
 \url{https://github.com/VikiShmiki/Political-Misinformation-Social-Networks}
 
-\balance
 \begin{thebibliography}{9}
 \bibitem{kipf2017} T. N. Kipf and M. Welling. Semi-Supervised Classification with Graph Convolutional Networks. \emph{ICLR}, 2017.
 \bibitem{hamilton2017} W. L. Hamilton, R. Ying, and J. Leskovec. Inductive Representation Learning on Large Graphs. \emph{NeurIPS}, 2017.
