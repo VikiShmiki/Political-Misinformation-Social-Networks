@@ -32,6 +32,8 @@ GNN values are mean ± sample standard deviation over model-initialization seeds
 
 The 7,053 tweets come from 14 Macedonian political accounts. A zero-shot multilingual model (`joeddav/xlm-roberta-large-xnli`) generated `valid`, `misleading`, and `invalid` labels. The binary task treats `misleading` and `invalid` as positive. Counts are 5,303 valid, 666 misleading, and 1,084 invalid. No human verification was done.
 
+The raw-data audit also found 150 URL-only tweet texts and 614 tweets with no listed retweeters. Reproduce those checks with `python src/data_audit.py path/to/political_tweets_dataset.zip`. The paper discusses why these cases matter for text and graph models.
+
 The models use two graph layers, a shared 96-dimensional representation, and separate author and pseudo-label heads. The split contains 4,513 train, 1,129 validation, and 1,411 test tweets. Model selection uses post-update validation macro-F1, averaged across tasks. The majority and class-balanced unigram/bigram TF-IDF logistic baselines use the same train/test tweets. The graph is transductive, and the GNN's 256-dimensional TF-IDF features were fitted on all *unlabeled* tweets during the original preparation; the text baseline's vectorizer is fitted on training tweets only. See the paper for implications.
 
 ## Reproduce in Colab
@@ -45,9 +47,10 @@ The reusable implementation is [`src/multitask_gnn.py`](src/multitask_gnn.py). I
 
 ## Files
 
-- [`report.pdf`](report.pdf): two-column paper with the corrected findings.
+- [`report.pdf`](report.pdf): three-page, two-column paper with the corrected findings, graph-audit diagram, and error analysis.
 - [`report.tex`](report.tex): editable LaTeX source (`IEEEtran`, `booktabs`).
 - [`src/multitask_gnn.py`](src/multitask_gnn.py): audited experiment and baselines.
+- [`src/data_audit.py`](src/data_audit.py): raw-archive checks cited in the paper.
 - [`misinformation notebooks/`](misinformation%20notebooks/): original exploratory data notebooks.
 
 The raw archive and derived labeled CSV are intentionally excluded from Git. The project does **not** claim to detect factual misinformation; it models automatically generated pseudo-labels.
