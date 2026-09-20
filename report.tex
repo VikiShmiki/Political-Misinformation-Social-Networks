@@ -3,45 +3,88 @@
 \usepackage{booktabs}
 \usepackage{hyperref}
 \usepackage{parskip}
-\title{Multi-Task Graph Neural Networks for Political Tweets}
+\usepackage{microtype}
+\title{Multi-Task Graph Neural Networks for\\Political Account Identification and\\Misinformation Label Prediction}
 \author{Political Misinformation Social Network Project}
 \date{}
 \begin{document}
 \maketitle
 
-\section{Overview}
-This project represents a collection of political tweets as a social graph and evaluates several graph neural network (GNN) architectures. The model has two prediction heads: one predicts the political account that authored a tweet, and the other predicts whether the tweet received a generated misinformation label.
+\begin{abstract}
+This paper investigates multi-task graph neural networks for the analysis of political communication on social media. A collection of 7,053 tweets from 14 Macedonian political accounts is represented as a graph containing 10,160 nodes and 97,364 edges. A shared graph encoder is trained with two task-specific prediction heads: a 14-class author-identification head and a binary classifier for automatically generated misinformation labels. Graph Convolutional Networks, GraphSAGE, and Graph Attention Networks are evaluated under a common stratified data split. GraphSAGE provides the strongest balance between the two tasks, obtaining an author macro-F1 of 0.989 and a misinformation macro-F1 of 0.708. The findings demonstrate the usefulness of graph representation learning for account identification while also highlighting the limitations imposed by weakly supervised misinformation labels.
+\end{abstract}
 
-\section{Dataset and graph construction}
-The working archive contains 7,053 tweets from 14 political accounts. The graph contains 10,160 nodes and 97,364 edges after adding the social-network entities found in the tweet metadata. Tweet features are numerical metadata and text-derived features prepared by the original preprocessing notebooks. Only tweet nodes are used as labeled examples; the remaining graph nodes provide neighborhood context during message passing.
+\textbf{Keywords:} graph neural networks, social networks, political communication, misinformation, multi-task learning, GraphSAGE
 
-\section{Labels}
-Misinformation labels were generated with the multilingual zero-shot model \texttt{joeddav/xlm-roberta-large-xnli} using the candidate labels \texttt{valid}, \texttt{misleading}, and \texttt{invalid}. For the binary experiment, \texttt{valid} is treated as the negative class and the other two labels as the positive class. These are pseudo-labels rather than expert fact-checks, so the results should not be interpreted as a definitive misinformation detector.
+\section{Introduction}
+Political discussion on social media is shaped by both the content of individual messages and the network structure through which messages are produced and circulated. Treating tweets as independent observations discards information about authorship, interaction, and shared social context. Graph neural networks (GNNs) provide a natural framework for combining these sources of information by propagating feature representations over a graph.
 
-\section{Models}
-Each model uses two graph convolution layers, layer normalization, ReLU activations, dropout, and a shared hidden representation. The representation feeds two linear heads: a 14-class author classifier and a binary misinformation classifier. The comparison includes Graph Convolutional Networks (GCN), GraphSAGE, and Graph Attention Networks (GAT), using the same stratified split and optimization settings.
+This study examines a multi-task formulation of political tweet analysis. The first task is author identification: given a tweet node and its graph context, the model predicts the political account associated with the tweet. The second task predicts whether a tweet received a generated misinformation label. The tasks share a graph encoder but use separate output heads. This design allows the experiment to compare whether different graph architectures learn representations that generalize simultaneously to account-level structure and content-level labels.
+
+The contributions of this work are threefold: (i) a reproducible graph construction and multi-task learning workflow for a political tweet collection; (ii) a comparison of GCN, GraphSAGE, and GAT architectures under a common evaluation protocol; and (iii) an explicit assessment of the limitations of automatically generated misinformation labels.
+
+\section{Related Work}
+Graph convolutional networks perform localized neighborhood aggregation and were introduced as a scalable method for semi-supervised node classification~\cite{kipf2017}. GraphSAGE generalizes this approach by learning an aggregation function that can be applied to previously unseen nodes~\cite{hamilton2017}. Graph attention networks use learned attention coefficients to weight neighboring representations, allowing the model to assign different importance to different edges~\cite{velickovic2018}.
+
+\section{Data and Graph Representation}
+The working archive contains 7,053 tweets associated with 14 political accounts. Each tweet is represented using text-derived and metadata features prepared by the original preprocessing workflow. Social-network entities and relations extracted from the archive are added to form a graph represented in a PyTorch Geometric format. The resulting graph contains 10,160 nodes and 97,364 edges.
+
+Tweet nodes occur first in the node-feature matrix and are the only nodes used as labeled examples. The remaining nodes are retained during message passing so that tweet representations can incorporate graph context. The author label is the screen name associated with each tweet.
+
+Misinformation labels were generated using the multilingual zero-shot model \texttt{joeddav/xlm-roberta-large-xnli}. The candidate labels were \texttt{valid}, \texttt{misleading}, and \texttt{invalid}. For the binary experiment, \texttt{valid} is assigned to the negative class and the other two labels are assigned to the positive class. The resulting class distribution is 5,303 valid, 1,084 invalid, and 666 misleading tweets.
+
+Because the labels are generated rather than independently verified, the misinformation task should be interpreted as prediction of weak labels. High performance does not establish that a tweet is factually true or false.
+
+\section{Methodology}
+\subsection{Multi-Task Architecture}
+Each model consists of two graph convolution layers with a hidden dimension of 96. Each layer is followed by layer normalization, a ReLU nonlinearity, and dropout. The resulting node representation is passed to two linear prediction heads. The author head produces 14 logits, while the misinformation head produces two logits.
+
+For a training node $v$, the objective is the sum of the author cross-entropy loss and the misinformation cross-entropy loss. The positive misinformation class receives a weight of 2.0 to reduce the effect of class imbalance. The models are optimized with AdamW and a fixed random seed.
+
+\subsection{Compared Backbones}
+The experiment compares three encoders. GCN uses normalized neighborhood convolutions, GraphSAGE uses mean neighborhood aggregation, and GAT uses two attention heads per layer with head outputs averaged. All other components, including the hidden dimension, dropout, optimizer, and prediction heads, are held constant.
+
+\subsection{Evaluation Protocol}
+The tweet nodes are divided into training, validation, and test partitions using an 80/20 test split followed by an 80/20 training-validation split. Stratification is performed using the author labels, and the same partition is reused for all architectures. Performance is reported using accuracy and macro-F1 for each task. Macro-F1 is included because it gives each author and each misinformation class equal importance.
 
 \section{Results}
 \begin{table}[h]
 \centering
 \begin{tabular}{lrrrr}
 \toprule
-Model & Author accuracy & Author macro-F1 & Misinfo accuracy & Misinfo macro-F1\\
+Model & Author accuracy & Author macro-F1 & Misinformation accuracy & Misinformation macro-F1\\
 \midrule
 GCN & 0.962 & 0.957 & 0.755 & 0.689\\
 GraphSAGE & 0.991 & 0.989 & 0.775 & 0.708\\
 GAT & 0.997 & 0.997 & 0.703 & 0.641\\
 \bottomrule
 \end{tabular}
-\caption{Test-set performance on both tasks.}
+\caption{Test-set performance for the two prediction tasks.}
+\label{tab:results}
 \end{table}
 
-GraphSAGE gives the best balance between the two objectives. GAT achieves the highest author-identification score, but its misinformation macro-F1 is lower. This suggests that identifying an account is easier than recovering the noisier generated misinformation labels.
+All three architectures perform strongly on author identification. GAT obtains the highest author accuracy and macro-F1, followed closely by GraphSAGE. The misinformation task is more difficult. GraphSAGE obtains the highest misinformation accuracy and macro-F1, while GAT performs worst on this task despite its superior author results.
+
+The divergence between the tasks indicates that the graph contains highly informative account-specific structure, but that this structure does not transfer equally well to the noisier misinformation labels. GraphSAGE provides the strongest overall compromise between the two objectives.
+
+\section{Discussion}
+The results support the use of multi-task graph learning as a compact way to model political social-network data. The shared representation is sufficiently expressive to distinguish the 14 accounts while also supporting a second, weaker classification objective. The comparison also shows that architectural choices affect the two tasks differently: attention improves author identification in this setting, whereas neighborhood aggregation provides better performance on the misinformation-label task.
+
+These results should not be interpreted as evidence that the models can determine factual truth. The generated labels are correlated with the language model's zero-shot judgments and may reflect linguistic or topical patterns rather than verified misinformation. In addition, the random split may place highly similar content from the same account in both training and test sets, which can make account identification easier than a time-based or event-based evaluation.
+
+\section{Limitations and Future Work}
+The principal limitation is the absence of independently verified misinformation annotations. Future work should replace the generated labels with fact-checking labels or annotate a smaller, carefully sampled evaluation set. A temporal split would provide a more realistic estimate of generalization to later political events. Additional experiments could compare homogeneous and heterogeneous graph formulations, tune the relative task-loss weights, and report calibration and per-class confusion matrices.
 
 \section{Conclusion}
-The experiment demonstrates a practical multi-task GNN workflow on a medium-sized political social graph. Sharing the graph encoder lets the author and misinformation tasks use the same neighborhood representation while keeping their outputs separate. A stronger follow-up would replace zero-shot labels with independently verified fact-check annotations and evaluate across time-based splits to reduce leakage from recurring accounts and topics.
+This paper presented a multi-task GNN framework for political tweet analysis. On the examined graph, GraphSAGE achieved the best balance between political-account identification and prediction of generated misinformation labels, while GAT achieved the strongest author-identification results. The study demonstrates the practical value of graph representation learning for social-media analysis while emphasizing that weakly supervised misinformation prediction must be interpreted cautiously.
 
-\section*{Code}
-The source code and Colab workflow are available at:\\
+\section*{Reproducibility}
+The preprocessing notebooks, model implementation, dependency list, and Google Colab workflow are available at:\\
 \url{https://github.com/VikiShmiki/Political-Misinformation-Social-Networks}
+
+\begin{thebibliography}{9}
+\bibitem{kipf2017} T. N. Kipf and M. Welling. Semi-Supervised Classification with Graph Convolutional Networks. \emph{International Conference on Learning Representations}, 2017.
+\bibitem{hamilton2017} W. L. Hamilton, R. Ying, and J. Leskovec. Inductive Representation Learning on Large Graphs. \emph{Advances in Neural Information Processing Systems}, 2017.
+\bibitem{velickovic2018} P. Veli\v{c}kovi\'c et al. Graph Attention Networks. \emph{International Conference on Learning Representations}, 2018.
+\end{thebibliography}
 \end{document}
