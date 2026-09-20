@@ -8,13 +8,23 @@ The first version of the graph directly connected every tweet to its author. Tha
 
 On the same fixed author-stratified split, the corrected models give:
 
-| Model | Author macro-F1 | Pseudo-label macro-F1 |
-|---|---:|---:|
-| Majority class | — | 0.428 |
-| Text-only logistic regression | — | 0.703 |
-| GCN | 0.820 ± 0.007 | 0.688 ± 0.003 |
-| GraphSAGE | 0.857 ± 0.016 | 0.702 ± 0.009 |
-| GAT | 0.865 ± 0.003 | 0.669 ± 0.004 |
+Author identification:
+
+| GNN encoder | Macro-F1 |
+|---|---:|
+| GCN | 0.820 ± 0.007 |
+| GraphSAGE | 0.857 ± 0.016 |
+| GAT | 0.865 ± 0.003 |
+
+Generated misinformation-label prediction:
+
+| Model | Macro-F1 |
+|---|---:|
+| Majority class | 0.428 |
+| Text-only logistic regression | 0.703 |
+| GCN | 0.688 ± 0.003 |
+| GraphSAGE | 0.702 ± 0.009 |
+| GAT | 0.669 ± 0.004 |
 
 GNN values are mean ± sample standard deviation over model-initialization seeds 42, 43, and 44; the tweet split is held fixed. GraphSAGE is the best GNN for the pseudo-label task, but it is essentially tied with the text-only baseline. The earlier near-perfect author scores came from the leaky graph and should not be used as primary results.
 

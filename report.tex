@@ -1,8 +1,9 @@
 \documentclass[conference]{IEEEtran}
 \usepackage{booktabs}
 \usepackage{amsmath}
-\usepackage{hyperref}
 \usepackage{microtype}
+\usepackage{float}
+\usepackage{hyperref}
 \hypersetup{hidelinks}
 \title{Auditing Multi-Task Graph Neural Networks for Political Tweet Classification}
 \author{\IEEEauthorblockN{Viktor Najdovski}}
@@ -31,27 +32,42 @@ In the original graph, each tweet has a direct link to its author account. Since
 
 Tweets are stratified by author into 4,513 training, 1,129 validation, and 1,411 test examples using a fixed split (seed 42). The graph is transductive: all nodes and non-target edges are visible, but only training tweet labels enter the loss. GNN input TF--IDF features were fitted on the full unlabeled tweet collection in the original preparation workflow; the text-only baseline fits its vocabulary on training tweets. This difference is a limitation of the comparison.
 
-Each encoder uses two message-passing layers with 96 hidden units, layer normalization, ReLU, and dropout. Shared embeddings feed a 14-class author head and a binary pseudo-label head. Training minimizes the sum of cross-entropy losses, weighting the positive pseudo-label class by two. AdamW uses a learning rate of 0.008 and weight decay of $10^{-4}$ for at most 35 epochs. Validation selects checkpoints by the average of the two macro-F1 scores, evaluated \emph{after} each optimizer step; training stops after eight non-improving epochs. Model initialization is repeated with seeds 42, 43, and 44 while keeping the split fixed.
+Each encoder has two message-passing layers (96 hidden units), layer normalization, ReLU, dropout, and separate task heads. The summed cross-entropy loss weights the positive pseudo-label class by two. AdamW uses a learning rate of 0.008, weight decay of $10^{-4}$, and at most 35 epochs. Checkpoints are selected by mean \emph{post-update} validation macro-F1 across tasks, with early stopping after eight non-improving epochs. Initializations use seeds 42, 43, and 44 on the fixed split.
 
-For the pseudo-label task, we compare against majority-class prediction and class-balanced logistic regression on word unigram/bigram TF--IDF features (up to 30,000 terms). The vectorizer is fitted on the training tweets only. Accuracy and macro-F1 are computed on the common test set; macro-F1 matters because the classes are imbalanced.
+For the pseudo-label task, we compare against majority-class prediction and class-balanced logistic regression on word unigram/bigram TF--IDF features (up to 30,000 terms). The vectorizer is fitted on the training tweets only. Accuracy and macro-F1 are computed on the common test set; macro-F1 matters because the classes are imbalanced. GNN scores are means $\pm$ sample standard deviations across three initialization seeds; baselines use one deterministic fit.
 
+\clearpage
 \section{Results}
-Table~\ref{tab:results} gives test scores. GAT has the highest mean author macro-F1 after the audit. GraphSAGE has the highest mean GNN pseudo-label macro-F1, but its 0.702 is effectively tied with text-only logistic regression's 0.703. The small three-seed standard deviations describe initialization variability on one fixed split, not uncertainty across datasets or future events.
+Tables~\ref{tab:author} and~\ref{tab:pseudo} report the two tasks separately. GAT has the highest mean author macro-F1 after the audit. GraphSAGE has the highest mean GNN pseudo-label macro-F1, but its 0.702 is effectively tied with text-only logistic regression's 0.703. The small standard deviations describe initialization variability on one fixed split, not uncertainty across datasets or future events.
 
-\begin{table}[t]
+\begin{table}[H]
 \centering
-\caption{Corrected test-set results. GNN values are mean $\pm$ sample standard deviation over three initialization seeds; baselines use one deterministic fit.}
-\label{tab:results}
-\setlength{\tabcolsep}{4pt}
-\begin{tabular}{lcc}
+\caption{Author identification after leakage removal (test macro-F1).}
+\label{tab:author}
+\begin{tabular}{lc}
 \toprule
-Model & Author F1 & Pseudo-label F1 \\
+GNN encoder & Author macro-F1 \\
 \midrule
-Majority & --- & 0.428 \\
-Text LR & --- & 0.703 \\
-GCN & $0.820\pm0.007$ & $0.688\pm0.003$ \\
-GraphSAGE & $0.857\pm0.016$ & $0.702\pm0.009$ \\
-GAT & $0.865\pm0.003$ & $0.669\pm0.004$ \\
+GCN & $0.820\pm0.007$ \\
+GraphSAGE & $0.857\pm0.016$ \\
+GAT & $0.865\pm0.003$ \\
+\bottomrule
+\end{tabular}
+\end{table}
+
+\begin{table}[H]
+\centering
+\caption{Binary pseudo-label prediction (test macro-F1).}
+\label{tab:pseudo}
+\begin{tabular}{lc}
+\toprule
+Model & Pseudo-label macro-F1 \\
+\midrule
+Majority class & 0.428 \\
+Text logistic regression & 0.703 \\
+GCN & $0.688\pm0.003$ \\
+GraphSAGE & $0.702\pm0.009$ \\
+GAT & $0.669\pm0.004$ \\
 \bottomrule
 \end{tabular}
 \end{table}
