@@ -1,50 +1,43 @@
-# Political Misinformation in a Social Network
+# Political Tweet Graph Learning: a Leakage-Audited Comparison
 
-This project builds a graph from political tweets and compares three graph neural network (GNN) architectures on two related tasks:
+This course project compares GCN, GraphSAGE, and GAT on two tweet-level tasks: predicting one of 14 political accounts and predicting a **model-generated** misinformation label. The label is not a verified fact-check.
 
-1. predict which political account authored a tweet;
-2. predict whether the tweet received a generated misinformation label.
+## Main finding
 
-The graph contains 7,053 tweets, 10,160 total nodes, and 97,364 edges. The experiment compares a GCN, GraphSAGE, and GAT with a shared encoder and two prediction heads.
+The first version of the graph directly connected every tweet to its author. That made author prediction partly an edge lookup. We removed all 14,106 directed authorship edges (zero remain) and zeroed the two author-profile-count features. The corrected graph has 7,053 tweet nodes, 3,107 account nodes, and 83,258 directed retweeter edges.
 
-## Results
+On the same fixed author-stratified split, the corrected models give:
 
-All models use the same fixed stratified train/validation/test split.
+| Model | Author macro-F1 | Pseudo-label macro-F1 |
+|---|---:|---:|
+| Majority class | — | 0.428 |
+| Text-only logistic regression | — | 0.703 |
+| GCN | 0.820 ± 0.007 | 0.688 ± 0.003 |
+| GraphSAGE | 0.857 ± 0.016 | 0.702 ± 0.009 |
+| GAT | 0.865 ± 0.003 | 0.669 ± 0.004 |
 
-| Model | Author accuracy | Author macro-F1 | Misinformation accuracy | Misinformation macro-F1 |
-|---|---:|---:|---:|---:|
-| GCN | 0.962 | 0.957 | 0.755 | 0.689 |
-| GraphSAGE | 0.991 | 0.989 | 0.775 | 0.708 |
-| GAT | 0.997 | 0.997 | 0.703 | 0.641 |
+GNN values are mean ± sample standard deviation over model-initialization seeds 42, 43, and 44; the tweet split is held fixed. GraphSAGE is the best GNN for the pseudo-label task, but it is essentially tied with the text-only baseline. The earlier near-perfect author scores came from the leaky graph and should not be used as primary results.
 
-GraphSAGE is the strongest balanced model. GAT is excellent at identifying the account but less reliable for the misinformation task.
+## Data and method
 
-Additional experiments were also run. In single-task controls, the author/misinformation macro-F1 pairs were 0.952/0.683 for GCN, 0.998/0.693 for GraphSAGE, and 0.994/0.700 for GAT. GraphSAGE training-size sensitivity produced misinformation macro-F1 values of 0.689, 0.712, and 0.708 with 50%, 75%, and 100% of the training tweets, respectively. These checks are discussed in the paper.
+The 7,053 tweets come from 14 Macedonian political accounts. A zero-shot multilingual model (`joeddav/xlm-roberta-large-xnli`) generated `valid`, `misleading`, and `invalid` labels. The binary task treats `misleading` and `invalid` as positive. Counts are 5,303 valid, 666 misleading, and 1,084 invalid. No human verification was done.
 
-## Important label note
+The models use two graph layers, a shared 96-dimensional representation, and separate author and pseudo-label heads. The split contains 4,513 train, 1,129 validation, and 1,411 test tweets. Model selection uses post-update validation macro-F1, averaged across tasks. The majority and class-balanced unigram/bigram TF-IDF logistic baselines use the same train/test tweets. The graph is transductive, and the GNN's 256-dimensional TF-IDF features were fitted on all *unlabeled* tweets during the original preparation; the text baseline's vectorizer is fitted on training tweets only. See the paper for implications.
 
-The misinformation labels are pseudo-labels produced with the multilingual zero-shot model `joeddav/xlm-roberta-large-xnli`, using the candidate labels `valid`, `misleading`, and `invalid`. They are not manually verified fact-checks. Therefore, the second task should be described as prediction of automatically generated misinformation labels, not definitive truth detection.
+## Reproduce in Colab
 
-## Running in Google Colab
+1. Open the [Colab notebook](https://colab.research.google.com/drive/1fUNYa80G0whRFzqyZnBW5XPjM6sxK9yH) and choose a GPU runtime.
+2. Upload `political_tweets_dataset.zip` when prompted. The archive is not committed to this repository.
+3. Run the preparation and pseudo-label cells. This recreates `/content/translated_labeled_tweets.csv` and may take several minutes.
+4. Run the leakage-audit/text-baseline cell, corrected three-GNN cell, and three-seed stability cell near the end. Earlier cells in the notebook show exploratory, unaudited results and are retained for context, **not** the final result.
 
-1. Open the [Colab notebook](https://colab.research.google.com/drive/1fUNYa80G0whRFzqyZnBW5XPjM6sxK9yH).
-2. Select a GPU runtime.
-3. Upload the raw `political_tweets_dataset.zip` archive when prompted.
-4. Run the preprocessing and labeling cells.
-5. Run the multi-task comparison cell.
+The reusable implementation is [`src/multitask_gnn.py`](src/multitask_gnn.py). It takes the original feature matrix and graph, the tweet DataFrame, generated labels, and a mapping from account name to graph node ID. `run_three_seeds(X, edge_index, df, labeled_df["misinformation_label"], user_to_node)` applies the audit and runs the baselines and corrected models with a fixed split. If the raw graph is rebuilt, preserve the tweet-first node ordering and the 256-text-plus-five-numeric-feature layout.
 
-The reusable model and training function are in [`src/multitask_gnn.py`](src/multitask_gnn.py). The original cleanup and graph-building notebooks remain in [`misinformation notebooks/`](misinformation%20notebooks/).
+## Files
 
-The generated labeled CSV and raw archive are intentionally excluded from Git because they are large derived data files. The preprocessing notebook recreates the labeled file in the Colab runtime.
+- [`report.pdf`](report.pdf): two-column paper with the corrected findings.
+- [`report.tex`](report.tex): editable LaTeX source (`IEEEtran`, `booktabs`).
+- [`src/multitask_gnn.py`](src/multitask_gnn.py): audited experiment and baselines.
+- [`misinformation notebooks/`](misinformation%20notebooks/): original exploratory data notebooks.
 
-## Project structure
-
-```text
-src/multitask_gnn.py              model and experiment code
-misinformation notebooks/        original data and graph notebooks
-report.tex                       two-column paper source
-report.pdf                       rendered two-column paper
-requirements.txt                 Python dependencies
-```
-
-The PDF is compiled directly from `report.tex` with `tectonic report.tex` (or another LaTeX engine with the IEEEtran class installed).
+The raw archive and derived labeled CSV are intentionally excluded from Git. The project does **not** claim to detect factual misinformation; it models automatically generated pseudo-labels.

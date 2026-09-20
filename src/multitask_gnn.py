@@ -9,6 +9,10 @@ import torch
 import torch.nn as nn
 import torch.nn.functional as F
 from sklearn.metrics import accuracy_score, f1_score
+from sklearn.dummy import DummyClassifier
+from sklearn.feature_extraction.text import TfidfVectorizer
+from sklearn.linear_model import LogisticRegression
+from sklearn.metrics import balanced_accuracy_score, confusion_matrix
 from sklearn.model_selection import train_test_split
 from torch_geometric.nn import GATConv, GCNConv, SAGEConv
 
@@ -40,7 +44,28 @@ class MultiTaskGNN(nn.Module):
         return self.author_head(h), self.misinfo_head(h)
 
 
-def run_experiment(X, edge_index, tweets, misinformation_labels,
+def remove_author_links(edge_index, authors, user_to_node):
+    """Remove both directed versions of each tweet's authorship edge."""
+    n = len(authors)
+    author_node = np.array([user_to_node[a] for a in authors], dtype=np.int64)
+    source, target = edge_index.cpu().numpy()
+    direct = np.zeros(len(source), dtype=bool)
+    forward = (source < n) & (target >= n)
+    reverse = (target < n) & (source >= n)
+    direct[forward] = target[forward] == author_node[source[forward]]
+    direct[reverse] = source[reverse] == author_node[target[reverse]]
+    cleaned = edge_index[:, torch.from_numpy(~direct)]
+    cs, ct = cleaned.cpu().numpy()
+    f = (cs < n) & (ct >= n)
+    r = (ct < n) & (cs >= n)
+    residual = int((ct[f] == author_node[cs[f]]).sum() +
+                   (cs[r] == author_node[ct[r]]).sum())
+    assert residual == 0
+    return cleaned, {"removed": int(direct.sum()), "remaining": int(cleaned.shape[1]),
+                     "residual_authorship_edges": residual}
+
+
+def run_experiment(X, edge_index, tweets, misinformation_labels, user_to_node,
                    epochs=35, hidden_dim=96, seed=42):
     """Compare GCN, GraphSAGE, and GAT on author and misinformation tasks.
 
@@ -55,8 +80,11 @@ def run_experiment(X, edge_index, tweets, misinformation_labels,
 
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
     n_tweets = len(tweets)
-    X_t = torch.tensor(X, dtype=torch.float32, device=device)
-    edge_t = edge_index.to(device)
+    X_t = torch.tensor(X, dtype=torch.float32, device=device).clone()
+    X_t[:n_tweets, -2:] = 0  # author follower/following counts
+    cleaned_edges, audit = remove_author_links(
+        edge_index, tweets["author"].astype(str).to_numpy(), user_to_node)
+    edge_t = cleaned_edges.to(device)
     names = sorted(tweets["author"].astype(str).unique())
     author_to_id = {name: i for i, name in enumerate(names)}
     y_author = torch.tensor(tweets["author"].astype(str).map(author_to_id).values,
@@ -65,9 +93,9 @@ def run_experiment(X, edge_index, tweets, misinformation_labels,
                              dtype=torch.long, device=device)
 
     ids = np.arange(n_tweets)
-    train_ids, test_ids = train_test_split(ids, test_size=0.20, random_state=seed,
+    train_ids, test_ids = train_test_split(ids, test_size=0.20, random_state=42,
                                            stratify=y_author.cpu().numpy())
-    train_ids, val_ids = train_test_split(train_ids, test_size=0.20, random_state=seed,
+    train_ids, val_ids = train_test_split(train_ids, test_size=0.20, random_state=42,
                                           stratify=y_author[train_ids].cpu().numpy())
     masks = []
     for chosen in (train_ids, val_ids, test_ids):
@@ -89,6 +117,8 @@ def run_experiment(X, edge_index, tweets, misinformation_labels,
             "author_macro_f1": f1_score(author_true, author_pred, average="macro"),
             "misinfo_accuracy": accuracy_score(misinfo_true, misinfo_pred),
             "misinfo_macro_f1": f1_score(misinfo_true, misinfo_pred, average="macro"),
+            "misinfo_balanced_accuracy": balanced_accuracy_score(misinfo_true, misinfo_pred),
+            "misinfo_confusion_matrix": confusion_matrix(misinfo_true, misinfo_pred).tolist(),
         }
 
     results = {}
@@ -111,8 +141,9 @@ def run_experiment(X, edge_index, tweets, misinformation_labels,
 
             model.eval()
             with torch.no_grad():
-                val_author = author_logits[:n_tweets][val_mask].argmax(1).cpu().numpy()
-                val_misinfo = misinfo_logits[:n_tweets][val_mask].argmax(1).cpu().numpy()
+                val_author_logits, val_misinfo_logits = model(X_t, edge_t)
+                val_author = val_author_logits[:n_tweets][val_mask].argmax(1).cpu().numpy()
+                val_misinfo = val_misinfo_logits[:n_tweets][val_mask].argmax(1).cpu().numpy()
             val_score = (f1_score(y_author[val_mask].cpu(), val_author, average="macro") +
                          f1_score(y_misinfo[val_mask].cpu(), val_misinfo, average="macro")) / 2
             if val_score > best_score:
@@ -128,4 +159,31 @@ def run_experiment(X, edge_index, tweets, misinformation_labels,
         result["epochs_ran"] = epoch
         result["seconds"] = time.time() - started
         results[kind] = result
-    return results
+    text = tweets["text"].fillna("").astype(str)
+    vectorizer = TfidfVectorizer(ngram_range=(1, 2), min_df=2,
+                                 max_features=30000, sublinear_tf=True)
+    z_train = vectorizer.fit_transform(text.iloc[train_ids])
+    z_test = vectorizer.transform(text.iloc[test_ids])
+    baseline = {}
+    truth = y_misinfo[test_mask].cpu().numpy()
+    for name, clf in (("majority", DummyClassifier(strategy="most_frequent")),
+                      ("text_logreg", LogisticRegression(max_iter=1000,
+                                     class_weight="balanced", random_state=42))):
+        clf.fit(z_train, y_misinfo[train_mask].cpu().numpy())
+        pred = clf.predict(z_test)
+        baseline[name] = {
+            "accuracy": accuracy_score(truth, pred),
+            "macro_f1": f1_score(truth, pred, average="macro"),
+            "balanced_accuracy": balanced_accuracy_score(truth, pred),
+            "confusion_matrix": confusion_matrix(truth, pred).tolist(),
+        }
+    return {"audit": audit, "gnn": results, "baselines": baseline}
+
+
+def run_three_seeds(X, edge_index, tweets, misinformation_labels, user_to_node):
+    """Keep the tweet split fixed while varying model initialization."""
+    runs = [run_experiment(X, edge_index, tweets, misinformation_labels,
+                           user_to_node, seed=seed) for seed in (42, 43, 44)]
+    return {"audit": runs[0]["audit"], "baselines": runs[0]["baselines"],
+            "gnn": {kind: [run["gnn"][kind] for run in runs]
+                    for kind in ("GCN", "GraphSAGE", "GAT")}}
