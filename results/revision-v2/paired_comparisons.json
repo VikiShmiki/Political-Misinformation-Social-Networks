@@ -1,0 +1,41 @@
+[
+  {
+    "model_a": "SAGE-deep",
+    "model_b": "SAGE-small",
+    "mean_delta": -0.011778405363837266,
+    "ci95": [
+      -0.030497357757706935,
+      0.0061045046187407645
+    ],
+    "replicates": 1000,
+    "group_count": 1297,
+    "seed": 2026,
+    "scope": "conditional on generated targets and the fixed test split"
+  },
+  {
+    "model_a": "SAGE-deep",
+    "model_b": "SAGE-filtered",
+    "mean_delta": -0.00041847961375829357,
+    "ci95": [
+      -0.013752504430913,
+      0.013317786085764255
+    ],
+    "replicates": 1000,
+    "group_count": 1297,
+    "seed": 2026,
+    "scope": "conditional on generated targets and the fixed test split"
+  },
+  {
+    "model_a": "SAGE-deep",
+    "model_b": "MLP-control",
+    "mean_delta": 0.0112431434583015,
+    "ci95": [
+      -0.0023641544008895046,
+      0.025813997248655643
+    ],
+    "replicates": 1000,
+    "group_count": 1297,
+    "seed": 2026,
+    "scope": "conditional on generated targets and the fixed test split"
+  }
+]

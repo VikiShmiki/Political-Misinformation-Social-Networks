@@ -2,133 +2,170 @@
 \usepackage{booktabs}
 \usepackage{amsmath}
 \usepackage{microtype}
-\usepackage{float}
+\usepackage{balance}
 \usepackage{tikz}
+\usepackage{pgfplots}
 \usepackage{hyperref}
+\usetikzlibrary{arrows.meta,positioning}
+\pgfplotsset{compat=1.18}
 \hypersetup{hidelinks}
-\title{Auditing Multi-Task Graph Neural Networks for Political Tweet Classification}
-\author{\IEEEauthorblockN{Viktor Najdovski}}
+\input{results/revision-v2/latex/macros.tex}
+\title{Confidence-Aware Multi-Task Graph Learning\\for Political Tweet Classification}
+\author{\IEEEauthorblockN{Viktor Najdovski}\IEEEauthorblockA{222097}}
 
 \begin{document}
 \maketitle
 \begin{abstract}
-We compare graph convolution, neighborhood aggregation, and attention for two tasks on a collection of 7,053 political tweets: identifying one of 14 authors and predicting a binary misinformation \emph{pseudo-label}. An initial graph construction placed a direct edge between every tweet and its author account, making author identification partly an edge lookup. We remove those edges and account-profile features before evaluating three two-layer multi-task graph neural networks (GNNs) on a fixed tweet split. Across three initialization seeds, author macro-F1 ranges from 0.820 to 0.865 by architecture. GraphSAGE obtains 0.702 misinformation macro-F1, comparable to a text-only logistic regression baseline at 0.703. The audit changes the interpretation of the experiment: the graph supports author prediction, but these results do not establish an advantage over text alone for pseudo-label prediction.
+Classifying political tweets requires separating the quality of a target label from the capacity of the model trained to predict it. We extend a leakage-audited graph learning project with a reproducible label cascade, frozen multilingual representations, larger residual networks, and measured runtime scaling. Of \NumTweets{} tweets from 14 Macedonian political accounts, \NumEligible{} have sufficient text for pseudo-labeling; two prompt formulations and confidence checks retain \NumAccepted{} for supervision. Acceptance measures teacher consistency, not independently verified truth. Ten neural configurations are evaluated over three initialization seeds on a common split that keeps duplicate normalized text together. A four-layer GraphSAGE model with 192 hidden units obtains \LargeFOne{} binary macro-F1, compared with \SmallFOne{} for a two-layer 96-unit model and \TextFOne{} for text logistic regression. At full graph size, its warm optimizer step costs \LargeTimeRatio{} times as much as the small model. Feature-only, edge-free, and single-task controls distinguish capacity from relational information. The pipeline makes uncertainty and computational cost observable while preserving the distinction between generated labels and factual misinformation.
 \end{abstract}
 \begin{IEEEkeywords}
-graph neural networks, leakage audit, political tweets, weak supervision, misinformation
+graph neural networks, weak supervision, confidence filtering, social networks, runtime scaling
 \end{IEEEkeywords}
 
 \section{Introduction}
-Graph neural networks combine a node's features with information from its neighbors. This is attractive for social-media analysis, where a tweet's text and the accounts that engage with it may both carry useful signals. It also creates an evaluation hazard: a graph can accidentally contain the answer to a prediction task. A model that recovers a directly encoded label can score well without learning a transferable relationship between language, interaction, and the target.
+Political communication contains factual claims, opinions, campaign slogans, accusations, and links to material outside a tweet. A classifier may assign all of these texts a label, but a numerical prediction alone does not establish whether a statement is true. This matters especially when another model generates the labels: a downstream network can learn the teacher's preferences without learning factual verification.
 
-This study asks two questions. First, how much of author-identification performance survives after removing graph and feature shortcuts that directly expose the account? Second, does a GNN add anything to the prediction of automatically assigned misinformation labels beyond a text-only model? We compare three standard encoders---GCN~\cite{kipf2017}, GraphSAGE~\cite{hamilton2017}, and GAT~\cite{velickovic2018}---under one split and a shared multi-task objective. The central result is a change of interpretation: correcting the graph reduces author performance markedly, while the strongest GNN is essentially tied with a text-only baseline on the second target.
+The first version of this project compared GCN, GraphSAGE, and GAT for author identification and binary misinformation-label prediction. An audit revealed direct tweet--author edges, which encoded the author target. Removing those edges and author-profile-count features reduced the near-perfect identification scores. After correction, the strongest graph model was approximately tied with text logistic regression on generated misinformation labels. However, label confidence was not retained, preprocessing differed between graph and text models, and capacity and runtime were not studied systematically.
 
-\section{Data and Labels}
-The dataset contains 7,053 tweets from 14 Macedonian political accounts. After concatenating the 14 CSV files and deduplicating by tweet ID, the archive still contains 7,053 rows. The initial heterogeneous graph has 7,053 tweet nodes, 3,107 account nodes, and 97,364 directed edges. Tweet features consist of 256 TF--IDF text dimensions and five standardized numeric metadata fields: retweet, reply, and favorite counts, plus the author's follower and following counts. Account nodes have zero-valued features. Edges connect tweets to their authors and to accounts listed as retweeters; reverse edges permit bidirectional message passing.
+This revision addresses those weaknesses. It asks four questions: how can uncertain valid/invalid assignments be exposed; do multilingual representations and confidence filtering change performance on a common test set; does increasing graph-model width or depth help; and what computational cost accompanies those changes? The contribution is an evaluated pipeline and controlled comparisons, rather than a new message-passing algorithm or a claim of automated fact-checking.
 
-The raw archive also shows important variation in available evidence. Of the 7,053 tweet texts, 150 (2.1\%) consist only of URLs, while 614 tweets (8.7\%) have no listed retweeters. The former offer little linguistic content to a text classifier, and the latter have no retweeter relation to supply graph context once the direct author edge is removed. These are properties of the raw data, not measured errors of any model; they identify cases where the two information sources may be weak.
+\section{Background}
+GCN aggregates features with degree-normalized graph convolution~\cite{kipf2017}. GraphSAGE combines a node representation with an aggregated neighborhood representation~\cite{hamilton2017}. GAT learns attention coefficients for neighboring nodes~\cite{velickovic2018}. These encoders provide different ways to use retweeter neighborhoods, but all depend on an appropriate graph. A relation that reveals the target can invalidate an otherwise conventional evaluation.
 
-The second target is derived from a multilingual zero-shot classifier, \texttt{joeddav/xlm-roberta-large-xnli}, using the candidate labels \texttt{valid}, \texttt{misleading}, and \texttt{invalid}. The observed counts are 5,303, 666, and 1,084, respectively. We merge the latter two into a positive binary class (1,750 tweets, or 24.8\%). These are model-generated labels, not independently verified fact-checks. In particular, the class names are candidate descriptions offered to the label generator; the experiment measures agreement with that procedure, not whether a political claim is true.
+Text features provide an essential comparison. TF--IDF encodes lexical frequencies, while multilingual sentence representations can capture related expressions with different wording. We use a frozen 384-dimensional multilingual MiniLM sentence model with attention-mask-aware mean pooling~\cite{minilm}. Feature extraction is a one-time preparation step, leaving the trainable graph models relatively inexpensive.
 
-\section{Leakage Audit}
-In the original graph, each tweet has a direct link to its author account. Since author identity is the first target, this is target leakage through topology. A two-layer GNN can also pass information from a tweet to its author account and back to other tweets by the same author. Randomly splitting tweet nodes does not remove that path: training and test tweets may share the same account node. Figure~\ref{fig:audit} shows the edge types considered in the audit.
+A multilingual natural language inference (NLI) model scores hypotheses associated with candidate classes~\cite{laurer}. Its outputs depend on class wording and available input evidence. Agreement and confidence are useful diagnostics of teacher behavior, but they do not replace human annotations or external evidence. Our binary task explicitly measures agreement with this teacher.
 
-Exactly 14,106 directed authorship edges---one in each direction for each tweet---are removed. An explicit post-filter check finds zero remaining direct tweet--author edges. We also zero the two tweet feature dimensions holding the author's follower and following counts, which could act as account fingerprints. Retweeter relations remain, giving a corrected graph with 83,258 directed edges. Because both edge and feature shortcuts are addressed, the before/after score change should be interpreted as a combined leakage correction, not an isolated estimate of the effect of one edge type.
+\section{Dataset and Graph Audit}
+The archive contains 14 CSV files and \NumTweets{} distinct tweet IDs. Tweets connect to account nodes through listed retweeters. Edges are made bidirectional and deduplicated; an account matching the tweet's own author is excluded even if listed as a retweeter. The graph has \NumTweets{} tweet nodes, \NumAccounts{} account nodes, and \NumEdges{} directed edges. A post-construction assertion verifies zero direct authorship edges. Account nodes begin with zero features, and no trainable account-ID embedding is introduced.
+
+The experiment is transductive: held-out tweet nodes, their text, and permitted relations are visible during message passing, but their labels do not enter the loss. This is classification in a known network, not prediction for new political accounts or future events. Retweeter activity may occur after publication, so it is also not a real-time screening test.
+
+Preparation removes URLs and account handles, normalizes whitespace, and preserves the original language. IDs are read as strings to avoid floating-point rounding. The earlier audit found 150 URL-only tweets. The revised evidence gate requires at least five word tokens after cleaning: \NumEligible{} tweets qualify and \NumIneligible{} short or link-only texts are excluded from supervised training and evaluation. All nodes remain available as unlabeled graph context. Separately, \NumIsolated{} tweets have no retained retweeter edges and therefore no relational account context.
+
+\section{Label-Generation Pipeline}
+\subsection{Teacher and Prompt Views}
+The revised teacher is \texttt{mDeBERTa-v3-base-mnli-xnli}, loaded from a fixed revision in full precision~\cite{laurer}. We score original-language text without an additional translation stage. Its model card describes multilingual transfer from MNLI/XNLI training, but Macedonian-specific fact-checking accuracy is not established. The teacher and embedding model revisions are recorded in the manifest.
+
+Each eligible tweet is evaluated against three hypotheses in each of two views. The first uses the original class words: ``This example is valid/misleading/invalid.'' The second uses descriptions: ``This text contains a credible factual statement/a misleading statement/a false factual statement.'' Entailment logits are normalized by softmax across candidates. The first view defines the fixed three-way target, whose most likely class is mapped to binary: valid is zero, and misleading or invalid is one. The second view checks agreement rather than redefining the test target.
+
+Teacher input pairs and sentence-feature inputs are capped at 128 tokens. Long tweets may therefore lose trailing context, an additional limitation for claim interpretation. This length cap is fixed across candidates and recorded in the cache configuration.
+
+\subsection{Confidence and Abstention}
+Let $p_i^{(v)}(c)$ denote the normalized candidate score for class $c$ in view $v$, and $b_i^{(v)}$ the merged hard three-way decision. The confidence in its binary vote is
+\begin{equation}
+q_i^{(v)}=\begin{cases}
+p_i^{(v)}(\mathrm{valid}), & b_i^{(v)}=0,\\
+p_i^{(v)}(\mathrm{misleading})+p_i^{(v)}(\mathrm{invalid}), & b_i^{(v)}=1.
+\end{cases}
+\end{equation}
+Acceptance requires sufficient text, equal binary votes, $\min_v q_i^{(v)}\geq0.75$, and a gap of at least 0.15 between the two largest three-way scores in both views. These rules are fixed before downstream training. Generation is resumable and caches full score vectors rather than only the argmax.
+
+The gate retains \GateCoverage\% of eligible examples; binary prompt agreement across eligible tweets is \PromptAgreement\%. Table~\ref{tab:quality} reports stage counts. Merging two classes can increase positive-class confidence, so the post-filter class distribution is also recorded. Rejected labels are marked uncertain and withheld from filtered binary training. Their first-view target is retained for teacher-agreement evaluation, and a separate review queue supports later human annotation.
+
+Holding agreement and the 0.15 margin rule fixed, reducing the confidence threshold to 0.60 retains \LooseGateCoverage\% of eligible examples; raising it to 0.90 retains \StrictGateCoverage\%. This sensitivity audit exposes the coverage cost of a stricter gate. It does not estimate factual precision, and no alternative gate is selected using test performance.
+
+\input{results/revision-v2/latex/quality_table.tex}
 
 \begin{figure}[t]
 \centering
-\begin{tikzpicture}[>=stealth, every node/.style={font=\footnotesize}]
-  \node[draw,circle,minimum size=8mm] (tweet) at (0,0) {$t_i$};
-  \node[draw,circle,minimum size=8mm] (author) at (-1.6,1.05) {$a_i$};
-  \node[draw,circle,minimum size=8mm] (retweeter) at (1.6,1.05) {$r_j$};
-  \draw[<->,dashed,thick] (tweet) -- node[left,xshift=-2pt] {removed} (author);
-  \draw[<->,thick] (tweet) -- node[right,xshift=2pt] {retained} (retweeter);
-  \node[align=center] at (0,-0.78) {tweet text and activity features};
+\begin{tikzpicture}[node distance=3.8mm,>=Stealth,
+ stage/.style={draw,rounded corners=1pt,align=center,text width=6.4cm,font=\footnotesize,inner sep=4pt}]
+ \node[stage] (raw) {Raw archive: stable IDs, cleaned text, retweeters};
+ \node[stage,below=of raw] (teacher) {Frozen NLI teacher: two prompts, three scores each};
+ \node[stage,below=of teacher] (gate) {Evidence + agreement + confidence gate\\Accepted supervision / uncertain review queue};
+ \node[stage,below=of gate] (split) {Grouped train/validation/test split\\Training-only vocabulary and metadata scaler};
+ \node[stage,below=of split] (model) {Frozen text features + audited graph\\Residual encoder: author and binary heads};
+ \node[stage,below=of model] (eval) {Validation checkpoint and threshold selection\\Common test metrics + runtime scaling};
+ \foreach \a/\b in {raw/teacher,teacher/gate,gate/split,split/model,model/eval} \draw[->] (\a) -- (\b);
 \end{tikzpicture}
-\caption{Graph audit for tweet $t_i$. The dashed authorship relation directly identifies the author target and is removed in both directions; retweeter relations remain.}
-\label{fig:audit}
+\caption{Revised pipeline. The first teacher view fixes the target; acceptance changes binary training supervision rather than the test population.}
+\label{fig:pipeline}
 \end{figure}
 
-\section{Experimental Setup}
-Tweets are stratified by author into 4,513 training, 1,129 validation, and 1,411 test examples using a fixed split (seed 42). All models use the same tweet indices. The graph experiment is transductive: all nodes and non-target edges are visible, but only training tweet labels enter the loss. This evaluates classification of held-out tweets in a known network, not the arrival of new accounts or a future political event.
+\section{Models and Evaluation}
+\subsection{Partitions and Features}
+Equal case-folded cleaned text stays in one partition using stratified group folds. Outer and inner seeds are 42 and 43; stratification uses author and binary teacher class. The partitions contain \NumTrain{} training, \NumValidation{} validation, and \NumTest{} eligible test tweets. A group-intersection check prevents exact normalized duplicates from crossing partitions. It does not exclude paraphrases, related stories, or campaign themes.
 
-GNN input TF--IDF features were fitted on the full unlabeled tweet collection in the original preparation workflow; the text-only baseline fits its vocabulary on training tweets. Although no test labels are used in either vectorizer, this difference makes the feature-preparation protocols unequal and limits direct attribution of any small score difference to the graph.
+The 256-term TF--IDF vocabulary and log-activity scaler are fitted on the complete training partition only. Numeric features comprise retweet, reply, and favorite counts; author follower/following counts are absent. The base representation has 259 dimensions. Adding 384 normalized frozen MiniLM dimensions gives 643 input features. The encoder is applied independently without adaptation to the collection, so neither preprocessing statistics nor encoder training use held-out labels.
 
-Each encoder has two message-passing layers (96 hidden units), layer normalization, ReLU, dropout, and separate task heads. GAT uses two attention heads per layer. For a labeled tweet $i$, the training objective is
-\begin{equation}
-\mathcal{L}=\operatorname{CE}(\hat{a}_i,a_i)+
-\operatorname{CE}_{(1,2)}(\hat{m}_i,m_i),
-\end{equation}
-where $a_i$ is the author class, $m_i$ is the binary pseudo-label, and $(1,2)$ denotes the negative and positive class weights. Each loss is averaged over training tweets before the task losses are added. The heads share the graph representation but not their final linear layers. This design makes author identification an auxiliary task for pseudo-label prediction, while also allowing competing gradients if the tasks favor different representations.
+\subsection{Architecture and Capacity}
+Every neural model projects its input to a hidden representation. A residual block applies GCN, GraphSAGE, GAT, or a feature-only linear transformation, adds the block input, then uses layer normalization, ReLU, and 0.25 dropout. Separate linear heads predict author and binary class. Small graph models have two blocks and 96 hidden units; GAT uses two averaged attention heads per block.
 
-AdamW uses a learning rate of 0.008, weight decay of $10^{-4}$, and at most 35 epochs. Checkpoints are selected by mean \emph{post-update} validation macro-F1 across tasks, with early stopping after eight non-improving epochs. Evaluating validation predictions after the optimizer step matters: using cached training-pass logits would rank the newly updated checkpoint with predictions from the previous parameter state. Initializations use seeds 42, 43, and 44 on the fixed split.
+GraphSAGE capacity is increased in two steps. SAGE-wide uses two 192-unit blocks. SAGE-deep uses four 192-unit blocks with residual paths. Small, wide, and deep parameter counts are \SmallParameters{}, \WideParameters{}, and \LargeParameters{}, respectively. The deep model is designated in advance as the principal larger-model comparison.
 
-For the pseudo-label task, we compare against majority-class prediction and class-balanced logistic regression on word unigram/bigram TF--IDF features (up to 30,000 terms). The vectorizer is fitted on the training tweets only. These baselines ask whether graph propagation improves upon a deliberately simple text predictor; they do not match the GNN's numeric metadata. Accuracy and macro-F1 are computed on the common test set. Macro-F1 gives equal weight to the two classes and therefore resists the misleading impression that could arise from predicting the 75\%-prevalent negative class alone. GNN scores are means $\pm$ sample standard deviations across three initialization seeds; baselines use one deterministic fit.
+The sequence isolates practical changes. SAGE-TFIDF uses lexical/activity features, and SAGE-small adds sentence features. SAGE-filtered keeps the small architecture but applies accepted-label supervision and confidence weighting. Width and depth increase after that step. MLP-control has the deep model's rich features, accepted supervision, four blocks, and hidden width, but no graph. SAGE-no-edges retains the deep GraphSAGE parameterization while removing every edge. SAGE-single-task disables the author loss. These controls separate feature capacity, neighborhood information, and the auxiliary task.
 
-\section{Results}
-Tables~\ref{tab:author} and~\ref{tab:pseudo} report the two tasks separately. They are interpreted as estimates under this fixed split and these generated labels, not as claims about factual accuracy in the wider political discourse.
+\subsection{Training and Operating Point}
+Models use AdamW with learning rate 0.002, weight decay $10^{-4}$, gradient clipping at 2.0, at most 70 epochs, and patience 12. The primary loss is class-balanced binary cross-entropy with weights computed from available training targets. Filtered configurations average it over \NumFilteredTrain{} accepted training rows, weighting each by minimum prompt confidence. The author loss continues to use all eligible training tweets, since screen names are independently observed. Joint models add author cross-entropy with weight 0.3.
 
-\begin{table}[H]
-\centering
-\caption{Author identification after leakage removal (test macro-F1).}
-\label{tab:author}
-\begin{tabular}{lc}
-\toprule
-GNN encoder & Author macro-F1 \\
-\midrule
-GCN & $0.820\pm0.007$ \\
-GraphSAGE & $0.857\pm0.016$ \\
-GAT & $0.865\pm0.003$ \\
-\bottomrule
-\end{tabular}
-\end{table}
+Post-update, dropout-free validation binary macro-F1 selects the checkpoint. Its threshold is selected on validation data from 0.10 to 0.90 in steps of 0.05; ties favor proximity to 0.5. Neither epochs, thresholds, nor architectures are selected on test labels. Default-threshold metrics are saved alongside selected-threshold results.
 
-\begin{table}[H]
-\centering
-\caption{Binary pseudo-label prediction (test macro-F1).}
-\label{tab:pseudo}
-\begin{tabular}{lc}
-\toprule
-Model & Pseudo-label macro-F1 \\
-\midrule
-Majority class & 0.428 \\
-Text logistic regression & 0.703 \\
-GCN & $0.688\pm0.003$ \\
-GraphSAGE & $0.702\pm0.009$ \\
-GAT & $0.669\pm0.004$ \\
-\bottomrule
-\end{tabular}
-\end{table}
+Initialization seeds 42, 43, and 44 vary neural weights on the fixed split. Neural F1 values are means with sample standard deviations. Text logistic regression uses class-balanced unigram/bigram TF--IDF and the same validation threshold procedure; filtered text and majority predictors are controls. Every headline binary score uses all eligible test tweets, including abstained rows. Restricting testing to accepted tweets would change difficulty and could inflate apparent improvement.
 
-\subsection{Author Identification and the Leakage Diagnostic}
-After the correction, GAT has the highest mean author macro-F1 (0.865), followed by GraphSAGE (0.857) and GCN (0.820). These scores show that author-related signal remains in tweet content, activity metadata, and retweeter neighborhoods; the direct authorship edge is not necessary to obtain above-chance classification. We do not know from these experiments which remaining source contributes most.
+\section{Predictive Results}
+\input{results/revision-v2/latex/author_table.tex}
+\input{results/revision-v2/latex/label_table.tex}
+\input{results/revision-v2/latex/pr_plot.tex}
 
-The original, unaudited graph produced author macro-F1 values of 0.957 (GCN), 0.989 (GraphSAGE), and 0.997 (GAT) in its reported run. Those near-perfect figures are retained only as a leakage diagnostic. They are not comparable as a controlled edge ablation: the corrected run also removes profile-count features and fixes validation checkpoint selection. Nevertheless, the original graph demonstrably contained the target relation, so its author scores should not be presented as valid generalization evidence. In the corrected seed-42 run, author macro-F1 is 0.827, 0.842, and 0.862 for GCN, GraphSAGE, and GAT, respectively.
+\subsection{Representation and Confidence Filtering}
+Tables~\ref{tab:author-v2} and~\ref{tab:labels-v2} separate observed-author prediction from teacher-label agreement. SAGE-TFIDF achieves \TFIDFFOne{} binary macro-F1; adding sentence features gives \SmallFOne{}. Corresponding author macro-F1 values are \TFIDFAuthorFOne{} and \SmallAuthorFOne{}. This is a feature comparison within the revised setup, whereas historic scores used a different target procedure and split.
 
-\subsection{Pseudo-Label Prediction}
-GraphSAGE has the highest mean GNN pseudo-label macro-F1 (0.702), followed by GCN (0.688) and GAT (0.669). The text-only logistic model obtains 0.703, while the majority baseline reaches just 0.428 despite 0.748 accuracy. Thus an accuracy-only comparison would conceal the majority model's complete failure to identify positive tweets. The GNN result does not establish a graph advantage on this pseudo-label task.
+Confidence filtering and weighting without added capacity yields \FilteredFOne{} binary macro-F1. Filtered text logistic regression obtains \FilteredTextFOne{}, versus \TextFOne{} for its all-label fit. These comparisons expose both the potential benefit of avoiding uncertain supervision and the cost in available examples. Acceptance does not create verified labels and may preferentially retain easier or rhetorically distinctive text. The raw outputs also retain accepted/abstained test results, class-specific precision/recall, average precision, ROC-AUC, Brier scores, and confusion matrices.
 
-The confusion matrices help explain the near tie. On the seed-42 test set of 1,411 tweets, GraphSAGE produces $\left[\begin{smallmatrix}871&184\\139&217\end{smallmatrix}\right]$ and text logistic regression produces $\left[\begin{smallmatrix}827&228\\118&238\end{smallmatrix}\right]$, with rows ordered as true negative/positive and columns as predicted negative/positive. GraphSAGE makes 44 fewer false-positive predictions but 21 more false negatives. Its positive-class precision and recall are 0.541 and 0.610, versus 0.511 and 0.669 for logistic regression. GraphSAGE's higher accuracy (0.771 versus 0.755) therefore reflects a different operating trade-off, not uniformly better classification. The text model also has slightly higher balanced accuracy (0.726 versus 0.718).
+Here the conservative gate does not improve aggregate F1 for either small GraphSAGE or text logistic regression. It also changes the positive-class share from \EligiblePositiveRate\% among eligible tweets to \AcceptedPositiveRate\% among accepted labels. Thus confidence filtering is an abstention policy with a substantial coverage and selection-bias cost, not an empirically established accuracy improvement. Rich text representations provide the clearer gain in this comparison.
 
-\subsection{Variation Across Initializations}
-The fixed-split three-seed comparison is small but prevents a single favorable initialization from becoming the whole result. GraphSAGE pseudo-label macro-F1 varies from 0.691 to 0.708, straddling the text baseline's 0.703. GAT is the most consistent author encoder in this set (0.862--0.868 across seeds), while GraphSAGE author scores span 0.842--0.873. These ranges are descriptive only: three seeds on one split do not provide a confidence interval for new datasets, accounts, or time periods.
+\subsection{Larger Models and Ablations}
+SAGE-wide and SAGE-deep reach \WideFOne{} and \LargeFOne{} binary macro-F1. The deep model's author macro-F1 is \LargeAuthorFOne{}. Its binary F1 difference from SAGE-small is \SmallDelta{}, with paired 95\% bootstrap interval \SmallDeltaCI{}; against the small filtered model it is \FilteredDelta{} with interval \FilteredDeltaCI{}. These distinguish the complete supervision/capacity combination from added capacity alone.
 
+The MLP obtains \MLPFOne{}, edge-free GraphSAGE \NoEdgesFOne{}, and the single-task graph model \SingleFOne{}. The deep model's difference from the MLP is \MLPDelta{} with interval \MLPDeltaCI{}. Improvement over a smaller GNN alone cannot establish that edges help: the non-graph controls are needed. Figure~\ref{fig:pr} shows the seed-42 precision--recall tradeoff beyond one threshold.
+
+Intervals use 1,000 paired resamples of normalized-text groups in the test partition, recomputing the mean F1 difference across three seeds. They are conditional on this teacher and fixed split, not uncertainty from replacing the teacher, annotation procedure, dataset, or event. Three initialization seeds likewise check stability rather than deployment performance.
+
+Increasing capacity does not establish a benefit in this setting: the deep model is approximately tied with filtered small GraphSAGE and trails the all-label small model despite its higher cost. The author scores are measured at checkpoints selected for binary validation F1, not at author-optimal checkpoints; early binary convergence can therefore leave the auxiliary author head undertrained. This protocol prioritizes the valid/invalid task requested in the revision and makes no claim of improved author identification.
+
+All three paired intervals include zero. In particular, the positive deep-versus-MLP point estimate is not sufficient evidence of a reliable relational advantage. The appropriate conclusion is inconclusive evidence for added graph capacity under this teacher and split, rather than a claim that graph structure never helps.
+
+\section{Runtime and Scaling}
+\input{results/revision-v2/latex/runtime_table.tex}
+\input{results/revision-v2/latex/scaling_plot.tex}
+Scaling benchmarks use the same eligible supervised rows for every configuration to isolate architectural cost, rather than the differing accepted-label counts used during predictive training. The full-size benchmark also preserves isolated account nodes.
+
+Runtime is measured on a Windows laptop with an Intel Core i7-1255U CPU, four PyTorch threads, float32 GNN computation, and no GPU. Four nested subsets contain roughly one-eighth, one-quarter, one-half, and all real tweets plus their retained account neighbors. Each induced subgraph remaps account IDs. No synthetic or replicated tweets are added, and actual node/edge counts are saved.
+
+The recorded environment uses PyTorch 2.8.0 and PyG 2.6.1 through the available PyTorch operators; optional compiled PyG acceleration extensions were unavailable. Backend and hardware differences can therefore change absolute timings on another machine.
+
+For small, wide, and deep GraphSAGE and small GAT, we separately time the first optimizer step, discard two further warm-up steps, and record seven synchronized warm steps. A training step includes forward propagation, both supervised losses, backward propagation, and AdamW. It excludes validation, teacher inference, feature extraction, and I/O. Inference is measured over seven evaluation-mode forward passes. CPU work completes before reading the clock; CUDA is explicitly synchronized if rerun on GPU. Medians and interquartile ranges are saved rather than the fastest observation.
+
+Table~\ref{tab:runtime} gives full-graph cost, and Fig.~\ref{fig:scaling} shows the trend with tweet count. Deep GraphSAGE costs \LargeTimeRatio{} times small GraphSAGE per warm full-graph optimizer step, independently of early-stopped epoch counts. Total per-run training time including validation is also retained. Teacher throughput is measured separately across NLI pair batch sizes, including tokenization but excluding loading/downloads.
+
+More tweets also change account and edge counts. The curve therefore measures observed subgraph scaling, not an asymptotic law at fixed degree. Sizes are bounded by this collection and cannot justify extrapolation to millions of tweets. GAT and GraphSAGE have different attention and aggregation costs, so parameter count alone does not predict runtime.
+
+An isolated teacher benchmark uses 24 eligible tweets sampled with seed 42, three repetitions, and one prompt view (three NLI pairs per tweet). Pair batch sizes of 3, 12, and 24 achieve \TeacherRateSmall{}, \TeacherRateMedium{}, and \TeacherRateLarge{} tweets per second, respectively. These warm measurements include tokenization and exclude model loading. The two-view label cascade requires twice the candidate evaluations, and variable sequence lengths affect throughput; these rates are not the latency of the complete downstream pipeline.
+
+\balance
 \section{Discussion and Limitations}
-The audit changes the scientific claim more than the architecture ranking. Under the original representation, a model could exploit an edge that encoded the author target. Under the corrected representation, author identification remains feasible but less striking. The comparison does not isolate the benefit of topology from text and metadata, nor does it prove that joint training is superior to a single-task model on the corrected graph. In particular, the older single-task runs used the unaudited graph and cannot serve as that control.
+The revision improves auditability by recording teacher scores, screening insufficient text, exposing prompt disagreement, fitting training-only preprocessing, grouping duplicates, and measuring added capacity. These are process improvements even when a score comparison does not favor a larger model. They distinguish supervision changes from architecture changes and support interpretation beyond one accuracy number.
 
-The pseudo-label task has a second interpretation problem: the target was itself inferred from tweet text. A text-only model can imitate that labeling procedure without detecting misinformation. The 150 URL-only tweets are a reminder that even the label generator may have limited semantic evidence for some examples. Without an independently annotated sample, agreement with generated labels cannot be converted into a claim about true or false political statements.
+Factual validity remains the main unresolved limitation. The teacher does not retrieve linked articles, check dates, corroborate claims, or consult independent fact-checks. Criticism or subjective language may trigger its misleading class. The two prompts are correlated judgments from one model, and relative softmax confidence is not calibrated correctness. Outputs should be described as valid/invalid according to this procedure, with generated targets explicitly called pseudo-labels.
 
-Other limits include one random, author-stratified split, possible overlap of related tweets across partitions, TF--IDF fitted on all unlabeled text for the GNN, and the absence of a corrected-graph feature-only neural baseline. A stronger next study would use verified labels, a temporal or account-held-out test, and an ablation that changes only graph edges while holding features, split, training, and validation procedures constant. It would also evaluate the 614 tweets without listed retweeters separately, since their corrected graph context is especially sparse.
+This revision changes the earlier XLM-R teacher to mDeBERTa, uses original-language inputs, and changes features and splitting. Historic binary F1 around 0.70 is not directly comparable to the new target. The within-revision ablations provide the relevant evidence. The original audit remains instructive, but its unaudited near-perfect author scores are not valid generalization evidence.
+
+Other limits include one graph, one grouped random split, possible related-content overlap, and no temporal or account-held-out test. Author accuracy cannot validate a weak binary label. Filtering can introduce selection bias and imbalance. A review queue with blank human-label/evidence fields supports independent annotation; automatic predictions are never counted as human verification. Human labels and temporal evaluation are the most valuable next steps toward a claim about real misinformation.
 
 \section{Conclusion}
-This project compares three multi-task GNNs after auditing a direct authorship shortcut. GAT is strongest for corrected author identification, while GraphSAGE is strongest among GNNs for the generated misinformation label. The latter does not outperform a simple text-only baseline in macro-F1. The useful lesson is methodological: graph construction, target provenance, and a credible non-graph comparison determine what a high score can mean. With verified labels and stricter splits, the same framework could test whether political interaction structure provides information beyond tweet text.
+The project now evaluates a complete labeling, modeling, and scaling pipeline. Ten neural configurations over three seeds include wider/deeper residual GraphSAGE and feature-only, edge-free, and single-task controls. Grouped partitions and a common eligible test set prevent duplicate leakage and changes in test difficulty. CPU scaling connects prediction scores to cost. The findings concern teacher-label agreement and author prediction; actual misinformation detection still requires independent annotation and evidence.
 
-\section*{Code Availability}
-Source code and the Colab workflow are available in the \href{https://github.com/VikiShmiki/Political-Misinformation-Social-Networks}{GitHub repository}.
+The measured outcome favors improved text features over added capacity: small GraphSAGE rises from \TFIDFFOne{} to \SmallFOne{} with multilingual representations, whereas deep filtered GraphSAGE achieves \LargeFOne{} at \LargeTimeRatio{} times the warm training-step cost. Strict confidence filtering improves transparency about uncertainty but does not improve aggregate F1 here. This makes independent label validation a better next investment than simply enlarging the network.
+
+\section*{Code and Reproducibility}
+The \href{https://github.com/VikiShmiki/Political-Misinformation-Social-Networks}{GitHub repository} includes the revised Colab notebook, Python scripts, pinned model revisions, run histories, split indices, raw timing samples, and generated LaTeX tables/figures. Raw tweets, labels, weights, and review files are excluded. README commands regenerate labels, model comparisons, benchmarks, and numeric paper artifacts.
 
 \begin{thebibliography}{9}
 \bibitem{kipf2017} T. N. Kipf and M. Welling, ``Semi-Supervised Classification with Graph Convolutional Networks,'' \emph{ICLR}, 2017.
 \bibitem{hamilton2017} W. L. Hamilton, R. Ying, and J. Leskovec, ``Inductive Representation Learning on Large Graphs,'' \emph{NeurIPS}, 2017.
 \bibitem{velickovic2018} P. Veli\v{c}kovi\'c et al., ``Graph Attention Networks,'' \emph{ICLR}, 2018.
+\bibitem{minilm} N. Reimers and I. Gurevych, ``Sentence-BERT: Sentence Embeddings using Siamese BERT-Networks,'' \emph{EMNLP-IJCNLP}, 2019. Model card: \url{https://huggingface.co/sentence-transformers/paraphrase-multilingual-MiniLM-L12-v2}.
+\bibitem{laurer} M. Laurer, W. van Atteveldt, A. Casas, and K. Welbers, ``Less Annotating, More Classifying: Addressing the Data Scarcity Issue of Supervised Machine Learning with Deep Transfer Learning and BERT-NLI,'' \emph{Political Analysis}, 2023, doi: 10.1017/PAN.2023.20. Model card: \url{https://huggingface.co/MoritzLaurer/mDeBERTa-v3-base-mnli-xnli}.
 \end{thebibliography}
 \end{document}

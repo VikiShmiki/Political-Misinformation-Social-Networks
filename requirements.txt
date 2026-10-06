@@ -4,3 +4,6 @@ scikit-learn
 torch
 torch-geometric
 tqdm
+transformers>=4.47,<5
+sentencepiece
+protobuf

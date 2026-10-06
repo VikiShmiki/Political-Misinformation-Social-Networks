@@ -1,0 +1,71 @@
+{
+  "model": "MoritzLaurer/mDeBERTa-v3-base-mnli-xnli",
+  "revision": "8adb042d524ecd5c26d3e3ba0e3fbcf7e2d0864c",
+  "dtype": "float32",
+  "device": "cpu",
+  "threads": 4,
+  "max_length": 128,
+  "sample_seed": 42,
+  "sample_rows": [
+    583,
+    3440,
+    6881,
+    5372,
+    4951,
+    2891,
+    1239,
+    5542,
+    6109,
+    4637,
+    640,
+    3013,
+    607,
+    5205,
+    3352,
+    5449,
+    2931,
+    6572,
+    2491,
+    3576,
+    876,
+    1359,
+    5087,
+    5976
+  ],
+  "rows": [
+    {
+      "pair_batch_size": 3,
+      "tweets": 24,
+      "seconds": [
+        11.339965300168842,
+        11.474997699959204,
+        11.550090200034901
+      ],
+      "median_seconds": 11.474997699959204,
+      "tweets_per_second": 2.09150368719336
+    },
+    {
+      "pair_batch_size": 12,
+      "tweets": 24,
+      "seconds": [
+        13.080545400036499,
+        13.44517089985311,
+        13.373261299915612
+      ],
+      "median_seconds": 13.373261299915612,
+      "tweets_per_second": 1.7946258180232704
+    },
+    {
+      "pair_batch_size": 24,
+      "tweets": 24,
+      "seconds": [
+        14.968865900067613,
+        12.926683600060642,
+        12.815766799962148
+      ],
+      "median_seconds": 12.926683600060642,
+      "tweets_per_second": 1.856624695284366
+    }
+  ],
+  "note": "One prompt view; three NLI pairs/tweet; includes tokenization; excludes loading."
+}

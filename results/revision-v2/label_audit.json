@@ -1,0 +1,108 @@
+{
+  "teacher": {
+    "signature": {
+      "archive_sha256": "9904d93a00ea08c69222bead29de0c2d3b57f6fdefcd011e0f265d7444e32890",
+      "model": "MoritzLaurer/mDeBERTa-v3-base-mnli-xnli",
+      "revision": "8adb042d524ecd5c26d3e3ba0e3fbcf7e2d0864c",
+      "max_length": 128,
+      "dtype": "float32",
+      "views": [
+        [
+          "This example is valid.",
+          "This example is misleading.",
+          "This example is invalid."
+        ],
+        [
+          "This text contains a credible factual statement.",
+          "This text contains a misleading statement.",
+          "This text contains a false factual statement."
+        ]
+      ],
+      "rows": 7053
+    },
+    "resolved_revision": "8adb042d524ecd5c26d3e3ba0e3fbcf7e2d0864c",
+    "device": "cpu",
+    "threads": 4,
+    "note": "Pseudo-label confidence is not calibrated factual correctness.",
+    "elapsed_this_invocation_seconds": 5828.276539100101,
+    "eligible": 6537,
+    "accepted": 1169,
+    "binary_counts_eligible": {
+      "0": 5485,
+      "1": 1052
+    },
+    "binary_counts_accepted": {
+      "0": 722,
+      "1": 447
+    },
+    "prompt_agreement_eligible": 0.7411656723267553,
+    "missing_evidence_policy": "unlabeled; target=-1; excluded from every supervised loss"
+  },
+  "rows": 7053,
+  "eligible": 6537,
+  "accepted": 1169,
+  "three_way_eligible": {
+    "valid": 5485,
+    "misleading": 920,
+    "invalid": 132
+  },
+  "three_way_descriptive_eligible": {
+    "valid": 3809,
+    "misleading": 2306,
+    "invalid": 422
+  },
+  "prompt_binary_agreement": 0.7411656723267553,
+  "binary_positive_eligible": 1052,
+  "binary_positive_accepted": 447,
+  "confidence_sensitivity": [
+    {
+      "threshold": 0.5,
+      "accepted": 3332,
+      "valid": 2645,
+      "positive": 687,
+      "coverage": 0.5097139360562949
+    },
+    {
+      "threshold": 0.6,
+      "accepted": 2346,
+      "valid": 1661,
+      "positive": 685,
+      "coverage": 0.3588802202845342
+    },
+    {
+      "threshold": 0.7,
+      "accepted": 1530,
+      "valid": 980,
+      "positive": 550,
+      "coverage": 0.23405231757687012
+    },
+    {
+      "threshold": 0.75,
+      "accepted": 1169,
+      "valid": 722,
+      "positive": 447,
+      "coverage": 0.17882820865840598
+    },
+    {
+      "threshold": 0.8,
+      "accepted": 870,
+      "valid": 498,
+      "positive": 372,
+      "coverage": 0.13308857273978889
+    },
+    {
+      "threshold": 0.85,
+      "accepted": 636,
+      "valid": 337,
+      "positive": 299,
+      "coverage": 0.09729233593391463
+    },
+    {
+      "threshold": 0.9,
+      "accepted": 395,
+      "valid": 182,
+      "positive": 213,
+      "coverage": 0.060425271531283464
+    }
+  ]
+}
